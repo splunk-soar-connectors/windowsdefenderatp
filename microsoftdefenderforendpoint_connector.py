@@ -2076,19 +2076,19 @@ class WindowsDefenderAtpConnector(BaseConnector):
 
         filters = []
         if device_ids:
-            filters.append(f"deviceIds eq '{device_ids}'")
+            filters.append(f"machineId eq '{device_ids}'")
         if software_ids:
-            filters.append(f"softwareIds eq '{software_ids}'")
+            filters.append(f"softwareId eq '{software_ids}'")
         if cve_ids:
-            filters.append(f"cveIds eq '{cve_ids}'")
+            filters.append(f"cveId eq '{cve_ids}'")
         if product_name:
-            filters.append(f"productNames eq '{product_name}'")
+            filters.append(f"productName eq '{product_name}'")
         if product_version:
-            filters.append(f"productVersions eq '{product_version}'")
+            filters.append(f"productVersion eq '{product_version}'")
         if severity:
-            filters.append(f"severities eq '{severity}'")
+            filters.append(f"severity eq '{severity}'")
         if product_vendor:
-            filters.append(f"productVendors eq '{product_vendor}'")
+            filters.append(f"productVendor eq '{product_vendor}'")
 
         if filters:
             endpoint = "{}&$filter={}".format(endpoint, " and ".join(filters))

@@ -24,6 +24,9 @@
     "contributors": [
         {
             "name": "Adam Gold"
+        },
+        {
+            "name": "Bartosz Debek"
         }
     ],
     "rest_handler": "microsoftdefenderforendpoint_connector._handle_rest_request",
