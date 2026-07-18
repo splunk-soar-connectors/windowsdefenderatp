@@ -16,9 +16,11 @@
 #
 # Phantom App imports
 import gzip
+import hmac
 import json
 import os
 import re
+import secrets
 import shutil
 import sys
 import time
@@ -146,9 +148,18 @@ def _handle_login_response(request):
     :return: HttpResponse. The response displayed on authorization URL page
     """
 
-    asset_id = request.GET.get("state")
-    if not asset_id:
+    oauth_state = request.GET.get("state")
+    if not oauth_state or ":" not in oauth_state:
         return HttpResponse(f"ERROR: Asset ID not found in URL\n{json.dumps(request.GET)}", content_type="text/plain", status=400)
+
+    asset_id, presented_nonce = oauth_state.split(":", 1)
+    if not asset_id.isalnum():
+        return HttpResponse("ERROR: Invalid OAuth state", content_type="text/plain", status=400)
+
+    state = _load_app_state(asset_id)
+    stored_nonce = state.get("oauth_state_nonce", "")
+    if not stored_nonce or not hmac.compare_digest(stored_nonce, presented_nonce):
+        return HttpResponse("ERROR: Invalid OAuth state", content_type="text/plain", status=400)
 
     # Check for error in URL
     error = request.GET.get("error")
@@ -167,7 +178,7 @@ def _handle_login_response(request):
     if not code:
         return HttpResponse(f"Error while authenticating\n{json.dumps(request.GET)}", content_type="text/plain", status=400)
 
-    state = _load_app_state(asset_id)
+    state.pop("oauth_state_nonce", None)
     state["code"] = code
     _save_app_state(state, asset_id, None)
 
@@ -194,8 +205,9 @@ def _handle_rest_request(request, path_parts):
     # To handle response from microsoft login page
     if call_type == "result":
         return_val = _handle_login_response(request)
-        asset_id = request.GET.get("state")  # nosemgrep
-        if asset_id and asset_id.isalnum():
+        oauth_state = request.GET.get("state", "")  # nosemgrep
+        asset_id = oauth_state.split(":", 1)[0]
+        if return_val.status_code < 400 and asset_id and asset_id.isalnum():
             app_dir = os.path.dirname(os.path.abspath(__file__))
             auth_status_file_path = f"{app_dir}/{asset_id}_{DEFENDERATP_TC_FILE}"
             real_auth_status_file_path = os.path.abspath(auth_status_file_path)
@@ -840,11 +852,14 @@ class WindowsDefenderAtpConnector(BaseConnector):
             self.save_progress(redirect_uri)
 
             # Authorization URL used to make request for getting code which is used to generate access token
+            flow_nonce = secrets.token_hex(16)
+            self._state["oauth_state_nonce"] = flow_nonce
+            oauth_state = f"{self.get_asset_id()}:{flow_nonce}"
             authorization_url = DEFENDERATP_AUTHORIZE_URL.format(
                 tenant_id=quote(self._tenant),
                 client_id=quote(self._client_id),
                 redirect_uri=redirect_uri,
-                state=self.get_asset_id(),
+                state=quote(oauth_state),
                 response_type="code",
                 resource=self._resource_url,
             )
