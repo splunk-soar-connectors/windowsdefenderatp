@@ -552,6 +552,12 @@ class WindowsDefenderAtpConnector(BaseConnector):
 
         return True
 
+    def _is_device_id(self, value):
+        return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}", value) is not None
+
+    def _is_action_id(self, value):
+        return isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9-]+", value) is not None
+
     def replace_null_values(self, data):
         return json.loads(json.dumps(data).replace("\\u0000", "\\\\u0000"))
 
@@ -3672,6 +3678,9 @@ class WindowsDefenderAtpConnector(BaseConnector):
         self._state = self.load_state()
 
         self.set_validator("ipv6", self._is_ipv6)
+        self.set_validator("defender atp device id", self._is_device_id)
+        self.set_validator("defender atp action id", self._is_action_id)
+        self.set_validator("defender atp event id", self._is_action_id)
 
         # get the asset config
         config = self.get_config()
