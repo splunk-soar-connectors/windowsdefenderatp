@@ -107,7 +107,7 @@
               <td>Alert ID</td>
               <td>
                 <a href="javascript:;"
-                   onclick="context_menu(this, [{'contains': ['defender atp alert id'], 'value': '{{ result.param.alert_id }}' }], 0, {{ container.id }}, null, false);">
+                   onclick="context_menu(this, [{'contains': ['defender atp alert id'], 'value': '{{ result.param.alert_id|escapejs }}' }], 0, {{ container.id }}, null, false);">
                   {{ result.param.alert_id }}
                   &nbsp;
                   <span class="fa fa-caret-down" style="font-size: smaller;"></span>
@@ -171,7 +171,7 @@
                         <td>
                           {% if alert.id %}
                             <a href="javascript:;"
-                               onclick="context_menu(this, [{'contains': ['defender atp device id'], 'value': '{{ alert.id }}' }], 0, {{ container.id }}, null, false);">
+                               onclick="context_menu(this, [{'contains': ['defender atp device id'], 'value': '{{ alert.id|escapejs }}' }], 0, {{ container.id }}, null, false);">
                               {{ alert.id }}
                               &nbsp;
                               <span class="fa fa-caret-down" style="font-size: smaller;"></span>
