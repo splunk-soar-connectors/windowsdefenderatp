@@ -3034,6 +3034,10 @@ class WindowsDefenderAtpConnector(BaseConnector):
         if not filename or not content:
             return "Error: one or more arguments are null value", None
 
+        filename = os.path.basename(str(filename).replace("\x00", ""))
+        if filename in {"", ".", ".."}:
+            return "Error: invalid file name", None
+
         gzip_filename = f"{filename}.gz"
         guid = uuid.uuid4()
 
@@ -3051,34 +3055,41 @@ class WindowsDefenderAtpConnector(BaseConnector):
             self._dump_error_log(e, "Error occured while creating directory.")
             return "Error while creating directory", None
 
-        gzip_file_path = f"{local_dir}/{gzip_filename}"
-        file_path = f"{local_dir}/{filename}"
-
-        # For image files add the content in .gz file
-        with open(gzip_file_path, "wb") as f:
-            f.write(content)
-
-        try:
-            # Extracting .gz file
-            with gzip.open(gzip_file_path, "rb") as f_in, open(file_path, "wb") as f_out:
-                shutil.copyfileobj(f_in, f_out)
-        except Exception as e:
-            self._dump_error_log(e, "Error occured while extracting .gz file.")
-            # For other type of files add the content in the actual file
-            with open(file_path, "wb") as f_out:
-                f_out.write(content)
+        local_dir = os.path.realpath(local_dir)
+        gzip_file_path = os.path.realpath(os.path.join(local_dir, gzip_filename))
+        file_path = os.path.realpath(os.path.join(local_dir, filename))
+        if any(os.path.commonpath([local_dir, path]) != local_dir for path in (gzip_file_path, file_path)):
+            shutil.rmtree(local_dir, ignore_errors=True)
+            return "Error: invalid file path", None
 
         try:
-            # Adding file to vault
-            success, _, vault_id = ph_rules.vault_add(file_location=file_path, container=self.get_container_id(), file_name=filename)
-        except Exception as e:
-            self._dump_error_log(e, "Error occured while adding the file to vault")
-            return "Error: Unable to add the file to vault", None
+            # For image files add the content in .gz file
+            with open(gzip_file_path, "wb") as f:
+                f.write(content)
 
-        if not success:
-            return "Error: Unable to add the file to vault", None
+            try:
+                # Extracting .gz file
+                with gzip.open(gzip_file_path, "rb") as f_in, open(file_path, "wb") as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+            except Exception as e:
+                self._dump_error_log(e, "Error occured while extracting .gz file.")
+                # For other type of files add the content in the actual file
+                with open(file_path, "wb") as f_out:
+                    f_out.write(content)
 
-        return True, vault_id
+            try:
+                # Adding file to vault
+                success, _, vault_id = ph_rules.vault_add(file_location=file_path, container=self.get_container_id(), file_name=filename)
+            except Exception as e:
+                self._dump_error_log(e, "Error occured while adding the file to vault")
+                return "Error: Unable to add the file to vault", None
+
+            if not success:
+                return "Error: Unable to add the file to vault", None
+
+            return True, vault_id
+        finally:
+            shutil.rmtree(local_dir, ignore_errors=True)
 
     def _get_live_response_result(self, action_id, action_result):
         endpoint = f"{self._graph_url}{DEFENDERATP_LIVE_RESPONSE_RESULT_ENDPOINT.format(action_id=action_id)}"
