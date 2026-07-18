@@ -30,9 +30,9 @@ from phantom.vault import Vault as Vault
 
 
 try:
-    from urllib.parse import quote, unquote, urlencode
+    from urllib.parse import quote, unquote, urlencode, urlparse
 except Exception:
-    from urllib import quote, unquote, urlencode
+    from urllib import quote, unquote, urlencode, urlparse
 
 import grp
 import ipaddress
@@ -557,6 +557,23 @@ class WindowsDefenderAtpConnector(BaseConnector):
 
     def _is_action_id(self, value):
         return isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9-]+", value) is not None
+
+    def _is_allowed_live_response_url(self, value):
+        if not isinstance(value, str):
+            return False
+
+        try:
+            parsed_url = urlparse(value)
+            port = parsed_url.port
+        except ValueError:
+            return False
+        if parsed_url.scheme != "https" or parsed_url.username or parsed_url.password or port not in (None, 443):
+            return False
+
+        hostname = (parsed_url.hostname or "").lower()
+        if self._environment == "Public":
+            return hostname == "core.windows.net" or hostname.endswith(".blob.core.windows.net")
+        return hostname == "core.usgovcloudapi.net" or hostname.endswith(".blob.core.usgovcloudapi.net")
 
     def replace_null_values(self, data):
         return json.loads(json.dumps(data).replace("\\u0000", "\\\\u0000"))
@@ -3099,7 +3116,10 @@ class WindowsDefenderAtpConnector(BaseConnector):
             return action_result.get_status(), None
 
         if response.get("value"):
-            response = requests.get(response["value"])  # nosemgrep: python.requests.best-practice.use-timeout.use-timeout
+            download_url = response["value"]
+            if not self._is_allowed_live_response_url(download_url):
+                return action_result.set_status(phantom.APP_ERROR, "Microsoft Defender returned an invalid download URL"), None
+            response = requests.get(download_url, allow_redirects=False, timeout=30)
             if response.status_code == 200:
                 return action_result.set_status(phantom.APP_SUCCESS), response
 
