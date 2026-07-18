@@ -781,15 +781,6 @@ class WindowsDefenderAtpConnector(BaseConnector):
             err = self._get_error_message_from_exception(e)
             return action_result.set_status(phantom.APP_ERROR, f"Error occurred while generating access token {err}")
 
-        try:
-            _save_app_state(self._state, self.get_asset_id(), self)
-        except Exception as e:
-            self._dump_error_log(e, "Error occurred while parsing the state file.")
-            return action_result.set_status(
-                phantom.APP_ERROR,
-                "Error occurred while parsing the state file. Please delete the state file and run the test connectivity again.",
-            )
-
         return phantom.APP_SUCCESS
 
     def _wait(self, action_result):
@@ -3776,7 +3767,6 @@ class WindowsDefenderAtpConnector(BaseConnector):
         # Save the state, this data is saved across actions and app upgrades
         try:
             self.save_state(deepcopy(self._state))
-            _save_app_state(self._state, self.get_asset_id(), self)
         except Exception as e:
             self._dump_error_log(e, "Error occured while saving state file.")
             return phantom.APP_ERROR

@@ -5,3 +5,4 @@
 * Restricted live-response result downloads to Microsoft Azure Storage origins.
 * Escaped untrusted values embedded in connector widget JavaScript contexts.
 * Bound interactive OAuth callbacks to the authorization flow that initiated them.
+* Kept OAuth tokens out of the connector's application-directory handshake state.
