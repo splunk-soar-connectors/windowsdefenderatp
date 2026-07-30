@@ -161,6 +161,9 @@ def _handle_login_response(request):
     if not stored_nonce or not hmac.compare_digest(stored_nonce, presented_nonce):
         return HttpResponse("ERROR: Invalid OAuth state", content_type="text/plain", status=400)
 
+    state.pop("oauth_state_nonce", None)
+    _save_app_state(state, asset_id, None)
+
     # Check for error in URL
     error = request.GET.get("error")
     error_description = request.GET.get("error_description")
@@ -178,7 +181,6 @@ def _handle_login_response(request):
     if not code:
         return HttpResponse(f"Error while authenticating\n{json.dumps(request.GET)}", content_type="text/plain", status=400)
 
-    state.pop("oauth_state_nonce", None)
     state["code"] = code
     _save_app_state(state, asset_id, None)
 
