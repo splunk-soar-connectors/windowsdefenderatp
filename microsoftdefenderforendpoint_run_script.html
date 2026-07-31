@@ -3,7 +3,7 @@
 {% block widget_content %}
   <!-- Main Start Block -->
   <!-- File: microsoftdefenderforendpoint_run_script.html
-  Copyright (c) 2019-2025 Splunk Inc.
+  Copyright (c) 2019-2026 Splunk Inc.
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
   You may obtain a copy of the License at
@@ -42,7 +42,7 @@
       {% if  result.summary.event_id %}
         <h5>Event ID:</h5>
         <a href="javascript:;"
-           onclick="context_menu(this, [{'contains': ['defender atp event id'], 'value': '{{ result.summary.event_id }}' }], 0, {{ container.id }}, null, false);">
+           onclick="context_menu(this, [{'contains': ['defender atp event id'], 'value': '{{ result.summary.event_id|escapejs }}' }], 0, {{ container.id }}, null, false);">
         {{ result.summary.event_id }}&nbsp;<span class="fa fa-caret-down" style="font-size: smaller;"></span></a>
       {% endif %}
       {% if not result.data %}

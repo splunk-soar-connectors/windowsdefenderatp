@@ -1,6 +1,6 @@
 # File: microsoftdefenderforendpoint_connector.py
 #
-# Copyright (c) 2019-2025 Splunk Inc.
+# Copyright (c) 2019-2026 Splunk Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,9 +16,11 @@
 #
 # Phantom App imports
 import gzip
+import hmac
 import json
 import os
 import re
+import secrets
 import shutil
 import sys
 import time
@@ -30,9 +32,9 @@ from phantom.vault import Vault as Vault
 
 
 try:
-    from urllib.parse import quote, unquote, urlencode
+    from urllib.parse import quote, unquote, urlencode, urlparse
 except Exception:
-    from urllib import quote, unquote, urlencode
+    from urllib import quote, unquote, urlencode, urlparse
 
 import grp
 import ipaddress
@@ -146,9 +148,21 @@ def _handle_login_response(request):
     :return: HttpResponse. The response displayed on authorization URL page
     """
 
-    asset_id = request.GET.get("state")
-    if not asset_id:
+    oauth_state = request.GET.get("state")
+    if not oauth_state or ":" not in oauth_state:
         return HttpResponse(f"ERROR: Asset ID not found in URL\n{json.dumps(request.GET)}", content_type="text/plain", status=400)
+
+    asset_id, presented_nonce = oauth_state.split(":", 1)
+    if not asset_id.isalnum():
+        return HttpResponse("ERROR: Invalid OAuth state", content_type="text/plain", status=400)
+
+    state = _load_app_state(asset_id)
+    stored_nonce = state.get("oauth_state_nonce", "")
+    if not stored_nonce or not hmac.compare_digest(stored_nonce, presented_nonce):
+        return HttpResponse("ERROR: Invalid OAuth state", content_type="text/plain", status=400)
+
+    state.pop("oauth_state_nonce", None)
+    _save_app_state(state, asset_id, None)
 
     # Check for error in URL
     error = request.GET.get("error")
@@ -167,7 +181,6 @@ def _handle_login_response(request):
     if not code:
         return HttpResponse(f"Error while authenticating\n{json.dumps(request.GET)}", content_type="text/plain", status=400)
 
-    state = _load_app_state(asset_id)
     state["code"] = code
     _save_app_state(state, asset_id, None)
 
@@ -194,8 +207,9 @@ def _handle_rest_request(request, path_parts):
     # To handle response from microsoft login page
     if call_type == "result":
         return_val = _handle_login_response(request)
-        asset_id = request.GET.get("state")  # nosemgrep
-        if asset_id and asset_id.isalnum():
+        oauth_state = request.GET.get("state", "")  # nosemgrep
+        asset_id = oauth_state.split(":", 1)[0]
+        if return_val.status_code < 400 and asset_id and asset_id.isalnum():
             app_dir = os.path.dirname(os.path.abspath(__file__))
             auth_status_file_path = f"{app_dir}/{asset_id}_{DEFENDERATP_TC_FILE}"
             real_auth_status_file_path = os.path.abspath(auth_status_file_path)
@@ -552,6 +566,29 @@ class WindowsDefenderAtpConnector(BaseConnector):
 
         return True
 
+    def _is_device_id(self, value):
+        return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}", value) is not None
+
+    def _is_action_id(self, value):
+        return isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9-]+", value) is not None
+
+    def _is_allowed_live_response_url(self, value):
+        if not isinstance(value, str):
+            return False
+
+        try:
+            parsed_url = urlparse(value)
+            port = parsed_url.port
+        except ValueError:
+            return False
+        if parsed_url.scheme != "https" or parsed_url.username or parsed_url.password or port not in (None, 443):
+            return False
+
+        hostname = (parsed_url.hostname or "").lower()
+        if self._environment == "Public":
+            return hostname == "core.windows.net" or hostname.endswith(".blob.core.windows.net")
+        return hostname == "core.usgovcloudapi.net" or hostname.endswith(".blob.core.usgovcloudapi.net")
+
     def replace_null_values(self, data):
         return json.loads(json.dumps(data).replace("\\u0000", "\\\\u0000"))
 
@@ -746,15 +783,6 @@ class WindowsDefenderAtpConnector(BaseConnector):
             err = self._get_error_message_from_exception(e)
             return action_result.set_status(phantom.APP_ERROR, f"Error occurred while generating access token {err}")
 
-        try:
-            _save_app_state(self._state, self.get_asset_id(), self)
-        except Exception as e:
-            self._dump_error_log(e, "Error occurred while parsing the state file.")
-            return action_result.set_status(
-                phantom.APP_ERROR,
-                "Error occurred while parsing the state file. Please delete the state file and run the test connectivity again.",
-            )
-
         return phantom.APP_SUCCESS
 
     def _wait(self, action_result):
@@ -817,11 +845,14 @@ class WindowsDefenderAtpConnector(BaseConnector):
             self.save_progress(redirect_uri)
 
             # Authorization URL used to make request for getting code which is used to generate access token
+            flow_nonce = secrets.token_hex(16)
+            self._state["oauth_state_nonce"] = flow_nonce
+            oauth_state = f"{self.get_asset_id()}:{flow_nonce}"
             authorization_url = DEFENDERATP_AUTHORIZE_URL.format(
                 tenant_id=quote(self._tenant),
                 client_id=quote(self._client_id),
                 redirect_uri=redirect_uri,
-                state=self.get_asset_id(),
+                state=quote(oauth_state),
                 response_type="code",
                 resource=self._resource_url,
             )
@@ -3028,6 +3059,10 @@ class WindowsDefenderAtpConnector(BaseConnector):
         if not filename or not content:
             return "Error: one or more arguments are null value", None
 
+        filename = os.path.basename(str(filename).replace("\x00", ""))
+        if filename in {"", ".", ".."}:
+            return "Error: invalid file name", None
+
         gzip_filename = f"{filename}.gz"
         guid = uuid.uuid4()
 
@@ -3045,34 +3080,41 @@ class WindowsDefenderAtpConnector(BaseConnector):
             self._dump_error_log(e, "Error occured while creating directory.")
             return "Error while creating directory", None
 
-        gzip_file_path = f"{local_dir}/{gzip_filename}"
-        file_path = f"{local_dir}/{filename}"
-
-        # For image files add the content in .gz file
-        with open(gzip_file_path, "wb") as f:
-            f.write(content)
-
-        try:
-            # Extracting .gz file
-            with gzip.open(gzip_file_path, "rb") as f_in, open(file_path, "wb") as f_out:
-                shutil.copyfileobj(f_in, f_out)
-        except Exception as e:
-            self._dump_error_log(e, "Error occured while extracting .gz file.")
-            # For other type of files add the content in the actual file
-            with open(file_path, "wb") as f_out:
-                f_out.write(content)
+        local_dir = os.path.realpath(local_dir)
+        gzip_file_path = os.path.realpath(os.path.join(local_dir, gzip_filename))
+        file_path = os.path.realpath(os.path.join(local_dir, filename))
+        if any(os.path.commonpath([local_dir, path]) != local_dir for path in (gzip_file_path, file_path)):
+            shutil.rmtree(local_dir, ignore_errors=True)
+            return "Error: invalid file path", None
 
         try:
-            # Adding file to vault
-            success, _, vault_id = ph_rules.vault_add(file_location=file_path, container=self.get_container_id(), file_name=filename)
-        except Exception as e:
-            self._dump_error_log(e, "Error occured while adding the file to vault")
-            return "Error: Unable to add the file to vault", None
+            # For image files add the content in .gz file
+            with open(gzip_file_path, "wb") as f:
+                f.write(content)
 
-        if not success:
-            return "Error: Unable to add the file to vault", None
+            try:
+                # Extracting .gz file
+                with gzip.open(gzip_file_path, "rb") as f_in, open(file_path, "wb") as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+            except Exception as e:
+                self._dump_error_log(e, "Error occured while extracting .gz file.")
+                # For other type of files add the content in the actual file
+                with open(file_path, "wb") as f_out:
+                    f_out.write(content)
 
-        return True, vault_id
+            try:
+                # Adding file to vault
+                success, _, vault_id = ph_rules.vault_add(file_location=file_path, container=self.get_container_id(), file_name=filename)
+            except Exception as e:
+                self._dump_error_log(e, "Error occured while adding the file to vault")
+                return "Error: Unable to add the file to vault", None
+
+            if not success:
+                return "Error: Unable to add the file to vault", None
+
+            return True, vault_id
+        finally:
+            shutil.rmtree(local_dir, ignore_errors=True)
 
     def _get_live_response_result(self, action_id, action_result):
         endpoint = f"{self._graph_url}{DEFENDERATP_LIVE_RESPONSE_RESULT_ENDPOINT.format(action_id=action_id)}"
@@ -3082,7 +3124,10 @@ class WindowsDefenderAtpConnector(BaseConnector):
             return action_result.get_status(), None
 
         if response.get("value"):
-            response = requests.get(response["value"])  # nosemgrep: python.requests.best-practice.use-timeout.use-timeout
+            download_url = response["value"]
+            if not self._is_allowed_live_response_url(download_url):
+                return action_result.set_status(phantom.APP_ERROR, "Microsoft Defender returned an invalid download URL"), None
+            response = requests.get(download_url, allow_redirects=False, timeout=30)
             if response.status_code == 200:
                 return action_result.set_status(phantom.APP_SUCCESS), response
 
@@ -3672,6 +3717,9 @@ class WindowsDefenderAtpConnector(BaseConnector):
         self._state = self.load_state()
 
         self.set_validator("ipv6", self._is_ipv6)
+        self.set_validator("defender atp device id", self._is_device_id)
+        self.set_validator("defender atp action id", self._is_action_id)
+        self.set_validator("defender atp event id", self._is_action_id)
 
         # get the asset config
         config = self.get_config()
@@ -3721,7 +3769,6 @@ class WindowsDefenderAtpConnector(BaseConnector):
         # Save the state, this data is saved across actions and app upgrades
         try:
             self.save_state(deepcopy(self._state))
-            _save_app_state(self._state, self.get_asset_id(), self)
         except Exception as e:
             self._dump_error_log(e, "Error occured while saving state file.")
             return phantom.APP_ERROR

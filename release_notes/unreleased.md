@@ -1,1 +1,8 @@
 **Unreleased**
+
+* Validated device and action identifiers before inserting them into Microsoft Defender API paths.
+* Confined live-response downloads to temporary vault paths and removed those files after use.
+* Restricted live-response result downloads to Microsoft Azure Storage origins.
+* Escaped untrusted values embedded in connector widget JavaScript contexts.
+* Bound interactive OAuth callbacks to the authorization flow that initiated them.
+* Kept OAuth tokens out of the connector's application-directory handshake state.

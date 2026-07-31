@@ -11,7 +11,7 @@
 {% block widget_content %}
   <!-- Main Start Block -->
   <!-- File: microsoftdefenderforendpoint_get_devices.html
-  Copyright (c) 2019-2025 Splunk Inc.
+  Copyright (c) 2019-2026 Splunk Inc.
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
   You may obtain a copy of the License at
@@ -107,7 +107,7 @@
               <td>File Hash</td>
               <td>
                 <a href="javascript:;"
-                   onclick="context_menu(this, [{'contains': ['sha1'], 'value': '{{ result.param.file_hash }}' }], 0, {{ container.id }}, null, false);">
+                   onclick="context_menu(this, [{'contains': ['sha1'], 'value': '{{ result.param.file_hash|escapejs }}' }], 0, {{ container.id }}, null, false);">
                   {{ result.param.file_hash }}
                   &nbsp;
                   <span class="fa fa-caret-down" style="font-size: smaller;"></span>
@@ -117,7 +117,7 @@
               <td>User ID</td>
               <td>
                 <a href="javascript:;"
-                   onclick="context_menu(this, [{'contains': ['user name'], 'value': '{{ result.param.user_id }}' }], 0, {{ container.id }}, null, false);">
+                   onclick="context_menu(this, [{'contains': ['user name'], 'value': '{{ result.param.user_id|escapejs }}' }], 0, {{ container.id }}, null, false);">
                   {{ result.param.user_id }}
                   &nbsp;
                   <span class="fa fa-caret-down" style="font-size: smaller;"></span>
@@ -127,7 +127,7 @@
               <td>Domain</td>
               <td>
                 <a href="javascript:;"
-                   onclick="context_menu(this, [{'contains': ['domain'], 'value': '{{ result.param.domain }}' }], 0, {{ container.id }}, null, false);">
+                   onclick="context_menu(this, [{'contains': ['domain'], 'value': '{{ result.param.domain|escapejs }}' }], 0, {{ container.id }}, null, false);">
                   {{ result.param.domain }}
                   &nbsp;
                   <span class="fa fa-caret-down" style="font-size: smaller;"></span>
@@ -162,7 +162,7 @@
                       <tr>
                         <td>
                           <a href="javascript:;"
-                             onclick="context_menu(this, [{'contains': ['defender atp device id'], 'value': '{{ device.id }}' }], 0, {{ container.id }}, null, false);">
+                             onclick="context_menu(this, [{'contains': ['defender atp device id'], 'value': '{{ device.id|escapejs }}' }], 0, {{ container.id }}, null, false);">
                             {{ device.id }}
                             &nbsp;
                             <span class="fa fa-caret-down" style="font-size: smaller;"></span>
@@ -173,7 +173,7 @@
                         <td>{{ device.computerDnsName | default:"None" }}</td>
                         <td>
                           <a href="javascript:;"
-                             onclick="context_menu(this, [{'contains': ['ip'], 'value': '{{ device.lastExternalIpAddress }}' }], 0, {{ container.id }}, null, false);">
+                             onclick="context_menu(this, [{'contains': ['ip'], 'value': '{{ device.lastExternalIpAddress|escapejs }}' }], 0, {{ container.id }}, null, false);">
                             {{ device.lastExternalIpAddress }}
                             &nbsp;
                             <span class="fa fa-caret-down" style="font-size: smaller;"></span>
@@ -181,7 +181,7 @@
                         </td>
                         <td>
                           <a href="javascript:;"
-                             onclick="context_menu(this, [{'contains': ['ip'], 'value': '{{ device.lastIpAddress }}' }], 0, {{ container.id }}, null, false);">
+                             onclick="context_menu(this, [{'contains': ['ip'], 'value': '{{ device.lastIpAddress|escapejs }}' }], 0, {{ container.id }}, null, false);">
                             {{ device.lastIpAddress }}
                             &nbsp;
                             <span class="fa fa-caret-down" style="font-size: smaller;"></span>
