@@ -53,3 +53,18 @@ def test_temporary_handshake_state_excludes_existing_tokens():
     assert '"token"' not in temporary_state
     assert '"access_token"' not in temporary_state
     assert '"refresh_token"' not in temporary_state
+
+
+def test_oauth_files_use_the_platform_application_state_directory():
+    source = _function_source("_get_file_path")
+
+    assert "paths.PHANTOM_APP_STATES / APP_ID" in source
+    assert "__file__" not in source
+
+
+def test_oauth_timeout_removes_temporary_state():
+    source = _function_source("_wait")
+    timeout_position = source.index("if not time_out:")
+    timeout_return = source.index("return action_result.set_status", timeout_position)
+
+    assert "_get_file_path(self.get_asset_id()).unlink()" in source[timeout_position:timeout_return]

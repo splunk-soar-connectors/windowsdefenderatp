@@ -48,8 +48,18 @@ from bs4 import BeautifulSoup, UnicodeDammit
 from django.http import HttpResponse
 from phantom.action_result import ActionResult
 from phantom.base_connector import BaseConnector
+from phantom_common import paths
 
 from microsoftdefenderforendpoint_consts import *
+
+
+APP_ID = "e85407b7-91f0-4019-8fa4-0d29bca741d5"
+
+
+def _get_file_path(asset_id, is_state_file=True):
+    """Return the platform application-state path for an OAuth handshake file."""
+    suffix = "state.json" if is_state_file else DEFENDERATP_TC_FILE
+    return paths.PHANTOM_APP_STATES / APP_ID / f"{asset_id}_{suffix}"
 
 
 def _handle_login_redirect(request, key):
@@ -92,17 +102,12 @@ def _load_app_state(asset_id, app_connector=None):
             app_connector.debug_print("In _load_app_state: Invalid asset_id")
         return {}
 
-    app_dir = os.path.dirname(os.path.abspath(__file__))
-    state_file = f"{app_dir}/{asset_id}_state.json"
-    real_state_file_path = os.path.abspath(state_file)
-    if not os.path.dirname(real_state_file_path) == app_dir:
-        if app_connector:
-            app_connector.debug_print("In _load_app_state: Invalid asset_id")
-        return {}
+    state_file = _get_file_path(asset_id)
+    state_file.parent.mkdir(parents=True, exist_ok=True)
 
     state = {}
     try:
-        with open(real_state_file_path) as state_file_obj:
+        with open(state_file) as state_file_obj:
             state_file_data = state_file_obj.read()
             state = json.loads(state_file_data)
     except Exception as e:
@@ -127,17 +132,11 @@ def _save_app_state(state, asset_id, app_connector):
             app_connector.debug_print("In _save_app_state: Invalid asset_id")
         return {}
 
-    app_dir = os.path.split(__file__)[0]
-    state_file = f"{app_dir}/{asset_id}_state.json"
-
-    real_state_file_path = os.path.abspath(state_file)
-    if not os.path.dirname(real_state_file_path) == app_dir:
-        if app_connector:
-            app_connector.debug_print("In _save_app_state: Invalid asset_id")
-        return {}
+    state_file = _get_file_path(asset_id)
+    state_file.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        with open(real_state_file_path, "w+") as state_file_obj:
+        with open(state_file, "w+") as state_file_obj:
             state_file_obj.write(json.dumps(state))
     except Exception as e:
         print(f"Unable to save state file: {e!s}")
@@ -214,11 +213,7 @@ def _handle_rest_request(request, path_parts):
         oauth_state = request.GET.get("state", "")  # nosemgrep
         asset_id = oauth_state.split(":", 1)[0]
         if return_val.status_code < 400 and asset_id and asset_id.isalnum():
-            app_dir = os.path.dirname(os.path.abspath(__file__))
-            auth_status_file_path = f"{app_dir}/{asset_id}_{DEFENDERATP_TC_FILE}"
-            real_auth_status_file_path = os.path.abspath(auth_status_file_path)
-            if not os.path.dirname(real_auth_status_file_path) == app_dir:
-                return HttpResponse("Error: Invalid asset_id", content_type="text/plain", status=400)
+            auth_status_file_path = _get_file_path(asset_id, is_state_file=False)
             open(auth_status_file_path, "w").close()
             try:
                 uid = pwd.getpwnam("apache").pw_uid
@@ -796,23 +791,26 @@ class WindowsDefenderAtpConnector(BaseConnector):
         :return: status (success/failed)
         """
 
-        app_dir = os.path.dirname(os.path.abspath(__file__))
         # file to check whether the request has been granted or not
-        auth_status_file_path = f"{app_dir}/{self.get_asset_id()}_{DEFENDERATP_TC_FILE}"
+        auth_status_file_path = _get_file_path(self.get_asset_id(), is_state_file=False)
         time_out = False
 
         # wait-time while request is being granted for 105 seconds
         for _ in range(0, 35):
             self.send_progress("Waiting...")
             self._state = _load_app_state(self.get_asset_id(), self)
-            if os.path.isfile(auth_status_file_path):
+            if auth_status_file_path.is_file():
                 time_out = True
-                os.unlink(auth_status_file_path)
+                auth_status_file_path.unlink()
                 break
             time.sleep(DEFENDERATP_TC_STATUS_SLEEP)
 
         if not time_out:
             self.send_progress("")
+            try:
+                _get_file_path(self.get_asset_id()).unlink()
+            except FileNotFoundError:
+                pass
             return action_result.set_status(phantom.APP_ERROR, "Timeout. Please try again later")
         self.send_progress("Authenticated")
         return phantom.APP_SUCCESS
