@@ -1,7 +1,7 @@
 # Microsoft Defender for Endpoint
 
 Publisher: Splunk <br>
-Connector Version: 4.0.4 <br>
+Connector Version: 4.0.5 <br>
 Product Vendor: Microsoft <br>
 Product Name: Microsoft Defender for Endpoint <br>
 Minimum Product Version: 6.2.2
